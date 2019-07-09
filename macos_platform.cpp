@@ -1,6 +1,7 @@
 #include <pthread.h>
 #include <assert.h>
 
+#include "main.cpp"
 
 internal_function u64
 LockedAddAndReturnPreviousValue(volatile u64* value, u64 to_add)
