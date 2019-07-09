@@ -72,7 +72,7 @@ NormalizeOrZero(v3 a)
 		return result;
 	}
 
-	result = {a.x/length, a.y/length, a.z/length};
+	result = V3(a.x/length, a.y/length, a.z/length);
 	
 	return result;
 }

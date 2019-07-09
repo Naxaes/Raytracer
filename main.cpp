@@ -6,8 +6,6 @@
 #include <assert.h>
 #include <time.h>
 
-#include <windows.h>
-
 #define internal_function  static
 #define global_variable    static
 #define locally_persistent static
@@ -15,25 +13,17 @@
 #include "main.h"
 
 
+
 // ---- OS-SPECIFIC ----
-// Windows
 internal_function u64
-LockedAddAndReturnPreviousValue(volatile u64* value, u64 to_add)
-{
-	u64 result = InterlockedExchangeAdd64((LONGLONG*)value, to_add);
-	return result;
-}
+LockedAddAndReturnPreviousValue(volatile u64* value, u64 to_add);
 
 internal_function u32
-GetCoreCount()
-{
-	SYSTEM_INFO info;
-	GetSystemInfo(&info);
-	
-	u32 result = info.dwNumberOfProcessors;
+GetCoreCount();
 
-	return result;
-}
+internal_function void
+CreateRenderTileThread(work_queue* queue);
+
 
 // ---- OS-AGNOSTIC ----
 internal_function u64 
@@ -76,7 +66,7 @@ AllocateImage(u32 width, u32 height)
 }
 
 internal_function s32
-WriteImage(image_buffer_u32 image, char* file_name)
+WriteImage(image_buffer_u32 image, const char* file_name)
 {
 
 	u32 size_of_image = SizeOfImage(image);
@@ -297,7 +287,7 @@ RenderTile(work_queue* queue)
 	f32 half_pixel_width  = 0.5f / image.width;
 	f32 half_pixel_height = 0.5f / image.height;
 
-	u32 rays_per_pixel = 16;
+	u32 rays_per_pixel = 512;
 
 	for (u32 y = y_start; y < y_stop; ++y)
 	{
@@ -341,24 +331,8 @@ RenderTile(work_queue* queue)
 
 
 
-// ---- OS-SPECIFIC ----
-// Windows
-internal_function DWORD WINAPI
-RenderTileThreadProcedure(void* parameter)
-{
-	work_queue* queue = (work_queue*) parameter;
-	while (RenderTile(queue)) {}
-	return 0;
-}
 
-internal_function void
-CreateRenderTileThread(work_queue* queue)
-{
-	DWORD thread_id;
-	HANDLE thread_handle = CreateThread(0, 0, RenderTileThreadProcedure, queue, 0, &thread_id);
-	CloseHandle(thread_handle);
-}
-
+#include "macos_platform.cpp"
 
 int main(int argument_count, char** argument_array)
 {
@@ -451,7 +425,7 @@ int main(int argument_count, char** argument_array)
 			current_work_order->y_start = min_y;
 			current_work_order->x_stop  = max_x;
 			current_work_order->y_stop  = max_y;
-			current_work_order->entropy = {tile_x * 25422 + tile_y * 516502};
+			current_work_order->entropy.state = tile_x * 25422 + tile_y * 516502;
 		}
 	}
 
@@ -476,7 +450,7 @@ int main(int argument_count, char** argument_array)
 	clock_t total_time = stop_time - start_time;
 
 	printf("\rRaycasting completed!    \n");
-	printf("Total time: %dms\n", total_time);
+	printf("Total time: %dms\n", (u32)total_time);
 	printf("Total bounces: %llu\n", queue.bounce_count);
 	printf("Time per bounce: %f\n", (f32)total_time / queue.bounce_count);
 
