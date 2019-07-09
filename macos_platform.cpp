@@ -49,3 +49,9 @@ CreateRenderTileThread(work_queue* queue)
 //        assert(true);
 //    }
 }
+
+
+int main(int argument_count, char* argument_array[])
+{
+    return EntryPoint(argument_count, argument_array);
+}

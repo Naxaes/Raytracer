@@ -12,9 +12,9 @@ if not exist build mkdir build
 pushd build
 
 if "%1"=="fast" (
-	cl %COMPILER_FLAGS_FAST%  %IGNORED_WARNINGS% ..\main.cpp %LINKER_FLAGS%
+	cl %COMPILER_FLAGS_FAST%  %IGNORED_WARNINGS% ..\win32_platform.cpp  /link  %LINKER_FLAGS%  /out:main.exe
 ) else (
-	cl %COMPILER_FLAGS_SLOW%  %IGNORED_WARNINGS% ..\main.cpp %LINKER_FLAGS%
+	cl %COMPILER_FLAGS_SLOW%  %IGNORED_WARNINGS% ..\win32_platform.cpp  /link  %LINKER_FLAGS%  /out:main.exe
 )
 
 

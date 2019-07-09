@@ -330,11 +330,7 @@ RenderTile(work_queue* queue)
 }
 
 
-
-
-#include "macos_platform.cpp"
-
-int main(int argument_count, char** argument_array)
+int EntryPoint(int argument_count, char** argument_array)
 {
 	u32 number_of_threads = 1;
 	if (argument_count == 2)

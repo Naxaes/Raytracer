@@ -15,10 +15,10 @@ pushd build > /dev/null
 
 if [ "$1" = "fast" ]; then
     echo "Building fast"
-    clang++ ${COMPILER_FLAGS_FAST}  ${IGNORED_WARNINGS} ../main.cpp ${LINKER_FLAGS} -o main >/dev/null
+    clang++ ${COMPILER_FLAGS_FAST}  ${IGNORED_WARNINGS} ../macos_platform.cpp ${LINKER_FLAGS} -o main > /dev/null
 else
     echo "Building slow"
-    clang++ ${COMPILER_FLAGS_SLOW}  ${IGNORED_WARNINGS} ../main.cpp ${LINKER_FLAGS} -o main >/dev/null
+    clang++ ${COMPILER_FLAGS_SLOW}  ${IGNORED_WARNINGS} ../macos_platform.cpp ${LINKER_FLAGS} -o main > /dev/null
 fi
 
 

@@ -1,5 +1,7 @@
 #include <windows.h>
 
+#include "main.cpp"
+
 internal_function u64
 LockedAddAndReturnPreviousValue(volatile u64* value, u64 to_add)
 {
@@ -32,4 +34,10 @@ CreateRenderTileThread(work_queue* queue)
     DWORD thread_id;
     HANDLE thread_handle = CreateThread(0, 0, RenderTileThreadProcedure, queue, 0, &thread_id);
     CloseHandle(thread_handle);
+}
+
+
+int main(int argument_count, char* argument_array[])
+{
+    return EntryPoint(argument_count, argument_array);
 }
