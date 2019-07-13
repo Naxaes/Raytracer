@@ -11,6 +11,7 @@
 #define locally_persistent static
 
 #include "main.h"
+#include "lane.cpp"
 
 
 
@@ -26,19 +27,6 @@ CreateRenderTileThread(work_queue* queue);
 
 
 // ---- OS-AGNOSTIC ----
-internal_function u64 
-XORShift64(random_series* random)
-{
-	// https://en.wikipedia.org/wiki/Xorshift
-	u64 x = random->state;
-	x ^= x << 13;
-	x ^= x >> 7;
-	x ^= x << 17;
-	random->state = x;
-
-	return x;
-}
-
 internal_function u32
 SizeOfImage(image_buffer_u32 image)
 {
@@ -105,21 +93,6 @@ WriteImage(image_buffer_u32 image, const char* file_name)
 }
 
 internal_function f32
-RandomUnilateral(random_series* random)
-{
-	f32 result = (f32)XORShift64(random) / (f32)U64_MAX;
-	// f32 result = (f32)rand() / (f32)RAND_MAX;
-	return result;
-}
-
-internal_function f32
-RandomBilateral(random_series* random)
-{
-	f32 result = -1.0f + 2.0f * RandomUnilateral(random);
-	return result;
-}
-
-internal_function f32
 ExactLinearTosRGB(f32 L)
 {
 	if (L < 0.0f)  L = 0.0f;
@@ -132,43 +105,48 @@ ExactLinearTosRGB(f32 L)
 }
 
 internal_function v3
-RayCast(work_queue* queue, world_state* world, v3 ray_origin, v3 ray_direction, random_series* entropy)
+RayCast(work_queue* queue, world_state* world, lane_v3 ray_origin, lane_v3 ray_direction, random_series* entropy)
 {
-	v3  result = {};
+	lane_v3  result = {};
 
-	v3  attenuation = V3(1, 1, 1);
-	f32 tolerance = 0.0001f;
-	f32 minimum_distance = 0.001f;
+	lane_v3  attenuation = V3(1, 1, 1);
+	lane_f32 tolerance = 0.0001f;
+	lane_f32 minimum_distance = 0.001f;
 	u32 bounce_count = 8;
 
-	u64 bounces_processed = 0;
+	// TODO(ted): May wrap if we have too big tiles.
+	lane_u32 bounces_processed = 0;
+	lane_u32 lane_mask = 0xFFFFFFFF;
 
 	for (u32 i = 0; i < bounce_count; ++i)
 	{
-		++bounces_processed;
+		bounces_processed += (1 & lane_mask);
 
-		f32 closest_hit_distance = F32_MAX;
+		lane_f32 closest_hit_distance = F32_MAX;
 
-		v3 next_normal = {};
-		u32 hit_material_index = 0;
+		lane_v3  next_normal = {};
+		lane_u32 hit_material_index = 0;
 
 		// Raycast planes
 		for (u32 plane_index = 0; plane_index < world->plane_count; ++plane_index)
 		{
 			plane current = world->planes[plane_index];
 
-			f32 denominator = Inner(current.normal, ray_direction);
-			if ((denominator < -tolerance) || (denominator > tolerance))
-			{
-				f32 hit_distance = (-current.offset - Inner(current.normal, ray_origin)) / denominator;
-				if (hit_distance > minimum_distance && hit_distance < closest_hit_distance)
-				{
-					closest_hit_distance = hit_distance;
-					hit_material_index = current.material_index;
+			lane_v3  plane_normal = current.normal;
+			lane_f32 plane_offset = current.offset;
+			lane_u32 plane_material_index = current.material_index;
 
-					next_normal = current.normal;
-				}
-			}
+			lane_f32 denominator = Inner(plane_normal, ray_direction);
+
+			lane_u32 denominator_mask = (denominator < -tolerance) || (denominator > tolerance);
+			lane_f32 hit_distance = (-plane_offset - Inner(plane_normal, ray_origin)) / denominator;
+			lane_u32 hit_distance_mask = hit_distance > minimum_distance && hit_distance < closest_hit_distance;
+
+			lane_u32 hit_mask = denominator_mask & hit_distance_mask;
+			
+			ConditionalAssign(&closest_hit_distance, hit_mask, hit_distance);
+			ConditionalAssign(&hit_material_index,   hit_mask, plane_material_index);
+			ConditionalAssign(&next_normal,          hit_mask, plane_normal);
 		}
 
 		// Raycast spheres
@@ -176,68 +154,65 @@ RayCast(work_queue* queue, world_state* world, v3 ray_origin, v3 ray_direction, 
 		{
 			sphere current = world->spheres[sphere_index];
 
-			v3 spheres_relative_origin = ray_origin - current.position;
-			f32 a = Inner(ray_direction, ray_direction);
-			f32 b = 2.0f * Inner(ray_direction, spheres_relative_origin);
-			f32 c = Inner(spheres_relative_origin, spheres_relative_origin) - current.radius*current.radius;
+			lane_v3  sphere_position = current.position;
+			lane_f32 sphere_raduis = current.radius;
+			lane_u32 sphere_material_index = current.material_index;
 
-			f32 root_term = sqrtf(b*b - 4.0f*a*c);
+			lane_v3  spheres_relative_origin = ray_origin - sphere_position;
 
-			if (root_term > tolerance)
-			{
-				f32 t0 = (-b + root_term) / (2.0f*a);
-				f32 t1 = (-b - root_term) / (2.0f*a);
+			lane_f32 a = Inner(ray_direction, ray_direction);
+			lane_f32 b = 2.0f * Inner(ray_direction, spheres_relative_origin);
+			lane_f32 c = Inner(spheres_relative_origin, spheres_relative_origin) - sphere_raduis*sphere_raduis;
 
-				f32 hit_distance = t0;
-				if (t1 > minimum_distance && t1 < t0)
-				{
-					hit_distance = t1;
-				}
+			lane_f32 root_term = sqrtf(b*b - 4.0f*a*c);
 
-				if (hit_distance > minimum_distance && hit_distance < closest_hit_distance)
-				{
-					closest_hit_distance = hit_distance;
-					hit_material_index = current.material_index;
+			lane_u32 root_mask = root_term > tolerance;
 
-					next_normal = NormalizeOrZero(spheres_relative_origin + ray_direction * hit_distance);
-				}
-			}
+			lane_f32 t0 = (-b + root_term) / (2.0f*a);
+			lane_f32 t1 = (-b - root_term) / (2.0f*a);
+
+			lane_f32 hit_distance = t0;
+			lane_u32 pick_mask = t1 > minimum_distance && t1 < t0;
+			ConditionalAssign(&hit_distance, pick_mask, t1);
+
+			lane_u32 hit_mask = hit_distance > minimum_distance && hit_distance < closest_hit_distance;
+
+			ConditionalAssign(&closest_hit_distance, hit_mask, hit_distance);
+			ConditionalAssign(&hit_material_index,   hit_mask, sphere_material_index);
+			ConditionalAssign(&next_normal, hit_mask, NormalizeOrZero(spheres_relative_origin + ray_direction * hit_distance));
 		}
 
 
-		if (hit_material_index)
+		material hit_material = world->materials[hit_material_index];
+
+		lane_v3  hit_material_emission_color = hit_material.emission_color;
+		lane_v3  hit_material_reflection_color = hit_material.reflection_color;
+		lane_f32 hit_material_specular = hit_material.specular;
+
+		result = result + Hadamard(attenuation, hit_material_emission_color);
+
+		lane_mask = lane_mask & (hit_material_index != 0);
+
+		lane_f32 cosine_attenuation = Max(Inner(-ray_direction, next_normal), 0);
+		attenuation = Hadamard(attenuation, hit_material_reflection_color * cosine_attenuation);
+
+		ray_origin = ray_origin + ray_direction * closest_hit_distance;
+
+		lane_v3 pure_reflactance = ray_direction - next_normal * Inner(ray_direction, next_normal) * 2.0f;
+		lane_v3 random_reflectance = NormalizeOrZero(next_normal + V3(
+			RandomBilateralLane(entropy), RandomBilateralLane(entropy), RandomBilateralLane(entropy)
+		));
+		ray_direction = NormalizeOrZero(Lerp(random_reflectance, hit_material_specular, pure_reflactance));
+
+		if (MaskIsZero(lane_mask))
 		{
-			material hit_material = world->materials[hit_material_index];
-
-			f32 cosine_attenuation = Inner(-ray_direction, next_normal);
-			if (cosine_attenuation < 0)
-			{
-				cosine_attenuation = 0;
-			}
-
-			result = result + Hadamard(attenuation, hit_material.emission_color);
-			attenuation = Hadamard(attenuation, hit_material.reflection_color * cosine_attenuation);
-
-			ray_origin = ray_origin + ray_direction * closest_hit_distance;
-
-			v3 pure_reflactance = ray_direction - next_normal * Inner(ray_direction, next_normal) * 2.0f;
-			v3 random_reflectance = NormalizeOrZero(next_normal + V3(RandomBilateral(entropy), RandomBilateral(entropy), RandomBilateral(entropy)));
-			ray_direction = NormalizeOrZero(Lerp(random_reflectance, hit_material.specular, pure_reflactance));
-		}
-		else
-		{
-			material hit_material = world->materials[0];
-
-			result = result + Hadamard(attenuation, hit_material.emission_color);
-			attenuation = Hadamard(attenuation, hit_material.reflection_color);
-			
 			break;
 		}
 	}
 
-	LockedAddAndReturnPreviousValue(&queue->bounce_count, bounces_processed);
+	LockedAddAndReturnPreviousValue(&queue->bounce_count, HorizontalAdd(bounces_processed));
 
-	return result;
+	return HorizontalAdd(result);
 }
 
 internal_function u32
@@ -299,18 +274,23 @@ RenderTile(work_queue* queue)
 			f32 film_x = -1.0f + 2.0f * ((f32)x / (f32)image.width);
 
 			f32 contribution = 1.0f / rays_per_pixel;
-			v3 color = V3(0, 0, 0);
-			for (u32 ray_index = 0; ray_index < rays_per_pixel; ++ray_index)
+			v3  color = {};
+			u32 lane_width = LANE_COUNT;
+			u32 lane_ray_count = rays_per_pixel / lane_width;
+			for (u32 ray_index = 0; ray_index < lane_ray_count; ++ray_index)
 			{
 
+				// TODO(ted): film_x and film_y is currently the topleft, not the center!
+				// They need to be changed, or we need to multiply by RandomUniLateral.
+
 				// Anti-aliasing
-				f32 x_offset = film_x + half_pixel_width  * RandomBilateral(&entropy);
-				f32 y_offset = film_y + half_pixel_height * RandomBilateral(&entropy);
+				lane_f32 x_offset = film_x + half_pixel_width  * RandomBilateralLane(&entropy);
+				lane_f32 y_offset = film_y + half_pixel_height * RandomBilateralLane(&entropy);
 
-				v3 film_position = film_center + camera_x_axis*film_half_width*x_offset + camera_y_axis*film_half_height*y_offset;
+				lane_v3 film_position = film_center + camera_x_axis*film_half_width*x_offset + camera_y_axis*film_half_height*y_offset;
 
-				v3 ray_origin = camera_position; 
-				v3 ray_direction = NormalizeOrZero(film_position - camera_position);
+				lane_v3 ray_origin = camera_position; 
+				lane_v3 ray_direction = NormalizeOrZero(film_position - camera_position);
 
 				color = color + RayCast(queue, world, ray_origin, ray_direction, &entropy) * contribution;
 			}
@@ -421,7 +401,7 @@ int EntryPoint(int argument_count, char** argument_array)
 			current_work_order->y_start = min_y;
 			current_work_order->x_stop  = max_x;
 			current_work_order->y_stop  = max_y;
-			current_work_order->entropy.state = tile_x * 25422 + tile_y * 516502;
+			current_work_order->entropy.state = tile_x * 25422 + tile_y * 516502 + 123687;
 		}
 	}
 
