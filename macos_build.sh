@@ -4,9 +4,9 @@
 # -ftime-report     Print timing summary of each stage of compilation.
 
 
-IGNORED_WARNINGS="-D_CRT_SECURE_NO_WARNINGS -Wno-gnu-anonymous-struct"
-COMPILER_FLAGS_SLOW="-Og -g -ObjC++ -Werror -pedantic -pedantic-errors"
-COMPILER_FLAGS_FAST="-O2    -ObjC++ -Werror -pedantic -pedantic-errors"
+IGNORED_WARNINGS="-Wno-gnu-anonymous-struct -Wno-return-type -Wno-deprecated-declarations"
+COMPILER_FLAGS_SLOW="-Og -g -Werror -pedantic -pedantic-errors -pthread"
+COMPILER_FLAGS_FAST="-O2    -Werror -pedantic -pedantic-errors -pthread"
 LINKER_FLAGS=""
 
 mkdir -p build
