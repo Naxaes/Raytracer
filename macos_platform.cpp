@@ -9,19 +9,13 @@ global_variable pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 internal_function u64
 LockedAddAndReturnPreviousValue(volatile u64* value, u64 to_add)
 {
-    // 'value' is a shared resource!
-
-    // https://stackoverflow.com/questions/28888719/multi-threaded-c-program-much-slower-in-os-x-than-linux
-
-    // https://stackoverflow.com/questions/33991644/why-is-performance-of-pthread-mutex-so-bad-on-mac-os-x-compared-to-linux
-
     s64 result = OSAtomicAdd64((s64)to_add, (s64*)value);
     result -= (s64)to_add;
     return (u64)result;
 }
 
 internal_function u32
-GetCoreCount()
+GetCoreCount()			// @INCOMPLETE
 {
     return 1;
 }
